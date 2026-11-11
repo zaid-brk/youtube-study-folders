@@ -17,12 +17,25 @@ test('resumes two folders independently after a browser restart', async () => {
     await startFolder(page, 'CSCE 313 Tutorials');
     await expect(page.locator('#related')).toBeHidden();
     await expect(page.locator('#comments')).toBeHidden();
+    await expect(page.locator('#extra-recommendations')).toBeHidden();
     await expect(page.locator('#playlist')).toBeVisible();
+    const scratchpad = page.getByRole('textbox', { name: 'Notes and next steps' });
+    await scratchpad.pressSequentially('tkf test');
+    await scratchpad.press('ArrowLeft');
+    await scratchpad.press('Backspace');
+    await expect(scratchpad).toHaveValue('tkf tet');
+    await expect(page.locator('ytd-watch-flexy')).not.toHaveAttribute('data-shortcut-count', /.+/);
+    await scratchpad.press('Tab');
+    await expect(page.getByRole('button', { name: 'Save checkpoint' })).toBeFocused();
+    await page.keyboard.press('t');
+    await expect(page.locator('ytd-watch-flexy')).toHaveAttribute('theater', '');
+
     await saveAt(page, 34, 'Check the condition variable predicate.');
 
     await page.getByRole('button', { name: 'End session' }).click();
     await expect(page.locator('#related')).toBeVisible();
     await expect(page.locator('#comments')).toBeVisible();
+    await expect(page.locator('#extra-recommendations')).toBeVisible();
 
     await startFolder(page, 'Interview Prep');
     await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('');
@@ -77,13 +90,22 @@ async function openBrowser(profile: string) {
         #primary-inner { position: relative; }
         #ambient { position: absolute; inset: 0; background: #101010; }
       </style>
+      <script>
+        for (const type of ['keydown', 'keypress', 'keyup']) {
+          window.addEventListener(type, (event) => {
+            const watch = document.querySelector('ytd-watch-flexy');
+            watch.dataset.shortcutCount = String(Number(watch.dataset.shortcutCount || 0) + 1);
+            if (type === 'keydown' && event.key === 't') watch.toggleAttribute('theater');
+          }, true);
+        }
+      </script>
       <ytd-watch-flexy>
         <main id="primary-inner">
           <video class="html5-main-video"></video>
           <div id="below"><h1>Thread Pools</h1><div id="comments">Comments</div></div>
           <div id="ambient" aria-hidden="true"></div>
         </main>
-        <aside id="secondary-inner"><div id="playlist">Playlist</div><div id="related">Recommendations</div></aside>
+        <aside id="secondary-inner"><div id="playlist">Playlist</div><div id="related">Recommendations</div><div id="extra-recommendations">More videos</div></aside>
       </ytd-watch-flexy>`,
   }));
   return context;

@@ -6,6 +6,7 @@ import '../styles/youtube.css';
 
 export default defineContentScript({
   matches: ['https://www.youtube.com/*'],
+  runAt: 'document_start',
   main(ctx) {
     const host = document.createElement('div');
     host.id = 'study-folders-host';
@@ -16,6 +17,17 @@ export default defineContentScript({
     panel.setAttribute('aria-label', 'Study session');
     root.append(styles, panel);
 
+    // Register before the page so YouTube's capture handlers cannot consume a note keystroke.
+    const keepNoteKeysLocal = (event: KeyboardEvent) => {
+      const target = event.composedPath()[0];
+      if (target instanceof HTMLTextAreaElement && root.activeElement === target) {
+        event.stopImmediatePropagation();
+      }
+    };
+    ctx.addEventListener(window, 'keydown', keepNoteKeysLocal, { capture: true });
+    ctx.addEventListener(window, 'keypress', keepNoteKeysLocal, { capture: true });
+    ctx.addEventListener(window, 'keyup', keepNoteKeysLocal, { capture: true });
+
     let folderId: string | undefined;
     let currentVideo: Video | undefined;
     let currentUrl = '';
@@ -24,6 +36,9 @@ export default defineContentScript({
     let sessionReady = false;
 
     function updatePage() {
+      const html = document.documentElement;
+      if (!html) return;
+
       const url = location.href;
       if (url !== currentUrl) {
         currentUrl = url;
@@ -33,7 +48,7 @@ export default defineContentScript({
         if (changed && sessionReady) render();
       }
 
-      document.documentElement.toggleAttribute('data-study-folders-focus', !!folderId && !!currentVideo);
+      html.toggleAttribute('data-study-folders-focus', !!folderId && !!currentVideo);
       if (!currentVideo) {
         host.remove();
         return;
@@ -62,7 +77,7 @@ export default defineContentScript({
     }
 
     const observer = new MutationObserver(scheduleUpdate);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document, { childList: true, subtree: true });
     ctx.addEventListener(window, 'wxt:locationchange', scheduleUpdate);
     ctx.addEventListener(window, 'resize', scheduleUpdate);
     ctx.addEventListener(document, 'yt-navigate-finish', scheduleUpdate);
@@ -70,7 +85,7 @@ export default defineContentScript({
       observer.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
       host.remove();
-      document.documentElement.removeAttribute('data-study-folders-focus');
+      document.documentElement?.removeAttribute('data-study-folders-focus');
     });
 
     function render() {

@@ -1,6 +1,5 @@
-html[data-study-folders-focus] ytd-watch-flexy #related,
-html[data-study-folders-focus] ytd-watch-flexy #comments,
-html[data-study-folders-focus] ytd-watch-flexy #secondary-inner > ytd-watch-next-secondary-results-renderer {
+html[data-study-folders-focus] ytd-watch-flexy :is(#related, #comments, ytd-comments, ytd-comments-entry-point-header-renderer, ytd-watch-next-secondary-results-renderer),
+html[data-study-folders-focus] ytd-watch-flexy #secondary-inner > :not(#study-folders-host, #playlist, ytd-playlist-panel-renderer, :has(ytd-playlist-panel-renderer)) {
   display: none !important;
 }
 
