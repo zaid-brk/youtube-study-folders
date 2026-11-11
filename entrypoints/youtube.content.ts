@@ -79,7 +79,6 @@ export default defineContentScript({
       if (!currentVideo) return;
       if (!folderId) {
         const start = makeButton('Start Study Session');
-        start.className = 'quiet';
         start.addEventListener('click', () => {
           start.disabled = true;
           void renderFolderPicker(view).catch(() => {

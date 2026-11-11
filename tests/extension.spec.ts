@@ -70,12 +70,18 @@ async function openBrowser(profile: string) {
   await context.route('https://www.youtube.com/**', (route) => route.fulfill({
     contentType: 'text/html',
     body: `<!doctype html>
+      <html style="color-scheme: dark">
       <title>Thread Pools - YouTube</title>
-      <style>#secondary-inner { width: 350px; }</style>
+      <style>
+        #secondary-inner { width: 350px; }
+        #primary-inner { position: relative; }
+        #ambient { position: absolute; inset: 0; background: #101010; }
+      </style>
       <ytd-watch-flexy>
         <main id="primary-inner">
           <video class="html5-main-video"></video>
           <div id="below"><h1>Thread Pools</h1><div id="comments">Comments</div></div>
+          <div id="ambient" aria-hidden="true"></div>
         </main>
         <aside id="secondary-inner"><div id="playlist">Playlist</div><div id="related">Recommendations</div></aside>
       </ytd-watch-flexy>`,
@@ -104,7 +110,9 @@ function silentWave() {
 }
 
 async function startFolder(page: Page, name: string) {
-  await page.getByRole('button', { name: 'Start Study Session' }).click();
+  const start = page.getByRole('button', { name: 'Start Study Session' });
+  await expect(start).toHaveCSS('background-color', 'rgb(24, 90, 188)');
+  await start.click();
   await page.getByRole('combobox', { name: 'Study folder' }).selectOption('new');
   await page.getByRole('textbox', { name: 'New folder name' }).fill(name);
   await page.getByRole('button', { name: 'Start', exact: true }).click();

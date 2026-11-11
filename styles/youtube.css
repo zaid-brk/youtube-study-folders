@@ -11,3 +11,8 @@ html[data-study-folders-focus] ytd-watch-flexy #secondary-inner > ytd-watch-next
   z-index: 2200;
   width: min(360px, calc(100% - 32px));
 }
+
+#study-folders-host[data-placement="inline"] {
+  position: relative;
+  z-index: 1;
+}
