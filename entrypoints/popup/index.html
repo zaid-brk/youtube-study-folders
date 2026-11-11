@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Study folders</title>
+  </head>
+  <body>
+    <main>
+      <h1>Study folders</h1>
+      <form>
+        <label for="folder-name">New folder</label>
+        <div class="form-row">
+          <input id="folder-name" type="text" maxlength="60" placeholder="e.g. CSCE 313" required>
+          <button type="submit">Create</button>
+        </div>
+      </form>
+      <p id="status" role="status"></p>
+      <section id="folders" aria-label="Your folders"></section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
