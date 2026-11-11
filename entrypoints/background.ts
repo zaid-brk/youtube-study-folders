@@ -1,15 +1,17 @@
 import { browser } from 'wxt/browser';
-import { resumeUrl, type StudyMessage } from '../lib/study';
+import { ACTIVE_SESSION_KEY, resumeUrl, type StudyMessage } from '../lib/study';
 
 function tabKey(tabId: number) {
   return 'study-tab:' + tabId;
 }
 
 export default defineBackground(() => {
+  let operations = Promise.resolve<string | undefined>(undefined);
   browser.runtime.onMessage.addListener((message: StudyMessage, sender, sendResponse) => {
     if (!['study:get', 'study:start', 'study:stop', 'study:resume'].includes(message?.type)) return;
 
-    handleMessage(message, sender.tab?.id)
+    operations = operations.catch(() => undefined).then(() => handleMessage(message, sender.tab?.id));
+    operations
       .then((folderId) => sendResponse({ folderId }))
       .catch((error: unknown) => {
         console.error('Study session failed', error);
@@ -31,6 +33,7 @@ async function handleMessage(message: StudyMessage, tabId?: number) {
     try {
       await browser.storage.session.set({ [tabKey(tab.id)]: message.checkpoint.folderId });
       await browser.tabs.update(tab.id, { url: resumeUrl(message.checkpoint) });
+      await browser.storage.local.set({ [ACTIVE_SESSION_KEY]: message.checkpoint.folderId });
     } catch (error) {
       await browser.tabs.remove(tab.id).catch(console.error);
       throw error;
@@ -42,11 +45,17 @@ async function handleMessage(message: StudyMessage, tabId?: number) {
   const key = tabKey(tabId);
   if (message.type === 'study:start') {
     await browser.storage.session.set({ [key]: message.folderId });
+    await browser.storage.local.set({ [ACTIVE_SESSION_KEY]: message.folderId });
     return message.folderId;
   }
   if (message.type === 'study:stop') {
-    await browser.storage.session.remove(key);
+    const sessions = await browser.storage.session.get(null);
+    await browser.storage.session.remove(Object.keys(sessions).filter((key) => key.startsWith('study-tab:')));
+    await browser.storage.local.remove(ACTIVE_SESSION_KEY);
     return;
   }
-  return (await browser.storage.session.get(key))[key] as string | undefined;
+  const activeFolder = (await browser.storage.local.get(ACTIVE_SESSION_KEY))[ACTIVE_SESSION_KEY] as string | undefined;
+  if (!activeFolder) return;
+  const tabFolder = (await browser.storage.session.get(key))[key] as string | undefined;
+  return tabFolder ?? activeFolder;
 }

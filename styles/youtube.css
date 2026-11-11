@@ -1,3 +1,6 @@
+html[data-study-folders-focus] :is(ytd-browse, ytd-shorts),
+html[data-study-folders-focus] ytd-search :is(ytd-reel-shelf-renderer, ytd-shelf-renderer),
+html[data-study-folders-focus] ytd-watch-flexy :is(.ytp-endscreen-content, .ytp-ce-element, .ytp-videowall-still),
 html[data-study-folders-focus] ytd-watch-flexy :is(#related, #comments, ytd-comments, ytd-comments-entry-point-header-renderer, ytd-watch-next-secondary-results-renderer),
 html[data-study-folders-focus] ytd-watch-flexy #secondary-inner > :not(#study-folders-host, #playlist, ytd-playlist-panel-renderer, :has(ytd-playlist-panel-renderer)) {
   display: none !important;

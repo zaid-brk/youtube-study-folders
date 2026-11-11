@@ -1,3 +1,5 @@
+export const ACTIVE_SESSION_KEY = 'active-study-folder';
+
 export interface Folder {
   id: string;
   name: string;

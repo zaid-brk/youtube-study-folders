@@ -50,6 +50,10 @@ test('resumes two folders independently after a browser restart', async () => {
 
     await context.close();
     context = await openBrowser(profile);
+    const reopenedHome = await context.newPage();
+    await reopenedHome.goto('https://www.youtube.com/');
+    await expect(reopenedHome.getByText('Session running', { exact: true })).toBeVisible();
+    await expect(reopenedHome.locator('ytd-browse')).toBeHidden();
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
     const popup = await context.newPage();
     await popup.goto(new URL('/popup.html', worker.url()).href);
@@ -74,13 +78,63 @@ test('resumes two folders independently after a browser restart', async () => {
   }
 });
 
+test('focus follows existing and new tabs while manual search stays available', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-focus-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const existingHome = await context.newPage();
+    await existingHome.goto('https://www.youtube.com/');
+    await expect(existingHome.locator('ytd-browse')).toBeVisible();
+
+    const tutorial = await context.newPage();
+    await tutorial.goto(video);
+    await startFolder(tutorial, 'CSCE 313');
+    await expect(tutorial.getByText('Session running', { exact: true })).toBeVisible();
+    await expect(existingHome.locator('ytd-browse')).toBeHidden();
+    await expect(existingHome.getByText('Session running', { exact: true })).toBeVisible();
+
+    const newHome = await context.newPage();
+    await newHome.goto('https://www.youtube.com/');
+    await expect(newHome.locator('ytd-browse')).toBeHidden();
+    await expect(newHome.getByText('Session running', { exact: true })).toBeVisible();
+    await newHome.getByRole('textbox', { name: 'Search YouTube', exact: true }).fill('condition variables');
+    await newHome.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(newHome.getByRole('link', { name: 'Condition variable tutorial' })).toBeVisible();
+    await expect(newHome.locator('ytd-shelf-renderer')).toBeHidden();
+    await newHome.getByRole('link', { name: 'Condition variable tutorial' }).click();
+    await expect(newHome.getByRole('heading', { name: 'CSCE 313', exact: true })).toBeVisible();
+    await expect(newHome.locator('#related')).toBeHidden();
+
+    await existingHome.getByRole('button', { name: 'End session' }).click();
+    await expect(existingHome.locator('ytd-browse')).toBeVisible();
+    await expect(tutorial.getByText('Session running', { exact: true })).toHaveCount(0);
+    await expect(tutorial.locator('#related')).toBeVisible();
+    await expect(newHome.locator('#related')).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
 async function openBrowser(profile: string) {
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
     args: ['--disable-extensions-except=' + extension, '--load-extension=' + extension],
   });
 
-  await context.route('https://www.youtube.com/**', (route) => route.fulfill({
+  await context.route('https://www.youtube.com/**', (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== '/watch') {
+      const content = url.pathname === '/results'
+        ? '<ytd-search><a href="' + otherVideo + '">Condition variable tutorial</a><ytd-shelf-renderer>Suggested videos</ytd-shelf-renderer></ytd-search>'
+        : '<ytd-browse>Homepage videos and suggestions</ytd-browse>';
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><html><body><form action="/results"><input name="search_query" aria-label="Search YouTube"><button type="submit">Search</button></form>' + content + '</body></html>',
+      });
+    }
+    return route.fulfill({
     contentType: 'text/html',
     body: `<!doctype html>
       <html style="color-scheme: dark">
@@ -107,7 +161,8 @@ async function openBrowser(profile: string) {
         </main>
         <aside id="secondary-inner"><div id="playlist">Playlist</div><div id="related">Recommendations</div><div id="extra-recommendations">More videos</div></aside>
       </ytd-watch-flexy>`,
-  }));
+    });
+  });
   return context;
 }
 

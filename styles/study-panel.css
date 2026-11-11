@@ -39,3 +39,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 p { margin: 8px 0 0; }
 p:empty { display: none; }
+
+.session-running {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: #15803d;
+  font-weight: 600;
+}
+.session-running::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+@media (prefers-color-scheme: dark) {
+  .session-running { color: #4ade80; }
+}

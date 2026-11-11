@@ -1,6 +1,7 @@
+import { browser } from 'wxt/browser';
 import { createFolder, getCheckpoint, listStudyData, saveCheckpoint } from '../lib/storage';
 import { studySession } from '../lib/session';
-import { formatTime, parseVideo, type Video } from '../lib/study';
+import { ACTIVE_SESSION_KEY, formatTime, parseVideo, type Video } from '../lib/study';
 import panelCss from '../styles/study-panel.css?inline';
 import '../styles/youtube.css';
 
@@ -48,8 +49,8 @@ export default defineContentScript({
         if (changed && sessionReady) render();
       }
 
-      html.toggleAttribute('data-study-folders-focus', !!folderId && !!currentVideo);
-      if (!currentVideo) {
+      html.toggleAttribute('data-study-folders-focus', !!folderId);
+      if (!currentVideo && !folderId) {
         host.remove();
         return;
       }
@@ -91,7 +92,12 @@ export default defineContentScript({
     function render() {
       const view = ++generation;
       panel.replaceChildren();
-      if (!currentVideo) return;
+      if (!currentVideo) {
+        if (folderId) {
+          panel.append(runningIndicator(), makeStatus('Search YouTube to choose your next tutorial.'), endButton(view));
+        }
+        return;
+      }
       if (!folderId) {
         const start = makeButton('Start Study Session');
         start.addEventListener('click', () => {
@@ -222,7 +228,7 @@ export default defineContentScript({
           end.disabled = false;
         }
       });
-      panel.replaceChildren(heading, label, note, makeActions(save, end), status);
+      panel.replaceChildren(runningIndicator(), heading, label, note, makeActions(save, end), status);
     }
 
     function endButton(view: number) {
@@ -243,17 +249,24 @@ export default defineContentScript({
       return end;
     }
 
-    void studySession({ type: 'study:get' })
-      .then((savedFolderId) => {
-        folderId = savedFolderId;
-      })
-      .catch(console.error)
-      .finally(() => {
-        if (ctx.isInvalid) return;
-        sessionReady = true;
-        updatePage();
-        if (!panel.childElementCount) render();
-      });
+    async function refreshSession() {
+      const savedFolderId = await studySession({ type: 'study:get' });
+      if (ctx.isInvalid) return;
+      const changed = folderId !== savedFolderId;
+      folderId = savedFolderId;
+      sessionReady = true;
+      updatePage();
+      if (changed || !panel.childElementCount) render();
+    }
+
+    const onSessionChanged = (changes: Record<string, unknown>, area: string) => {
+      if (area === 'local' && ACTIVE_SESSION_KEY in changes) {
+        void refreshSession().catch(console.error);
+      }
+    };
+    browser.storage.onChanged.addListener(onSessionChanged);
+    ctx.onInvalidated(() => browser.storage.onChanged.removeListener(onSessionChanged));
+    void refreshSession().catch(console.error);
   },
 });
 
@@ -276,4 +289,11 @@ function makeActions(...buttons: HTMLButtonElement[]) {
   actions.className = 'actions';
   actions.append(...buttons);
   return actions;
+}
+
+function runningIndicator() {
+  const indicator = document.createElement('p');
+  indicator.className = 'session-running';
+  indicator.textContent = 'Session running';
+  return indicator;
 }
