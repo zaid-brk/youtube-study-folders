@@ -1,3 +1,17 @@
+html[data-study-folders-focus] :is(ytd-guide-renderer, ytd-mini-guide-renderer, tp-yt-app-drawer, #guide),
+html[data-study-folders-focus] ytd-masthead :is(#start, #end, #voice-search-button) {
+  display: none !important;
+}
+html[data-study-folders-focus] ytd-masthead #container {
+  justify-content: center;
+}
+html[data-study-folders-focus] ytd-masthead #center {
+  margin-inline: auto;
+}
+html[data-study-folders-focus] ytd-page-manager {
+  margin-left: 0 !important;
+}
+
 html[data-study-folders-focus] :is(ytd-browse, ytd-shorts),
 html[data-study-folders-focus] ytd-search :is(ytd-reel-shelf-renderer, ytd-shelf-renderer),
 html[data-study-folders-focus] ytd-watch-flexy :is(.ytp-endscreen-content, .ytp-ce-element, .ytp-videowall-still),

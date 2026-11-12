@@ -1,4 +1,18 @@
 export const ACTIVE_SESSION_KEY = 'active-study-folder';
+export const SESSION_END_KEY = 'study-session-ends-at';
+
+export interface StudySession {
+  folderId?: string;
+  endsAt?: number;
+}
+
+export function sessionDeadline(currentEnd: number | undefined, minutes = 25, now = Date.now()): number {
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || !Number.isSafeInteger(now + minutes * 60_000)) {
+    throw new Error('Choose a valid positive whole number of minutes.');
+  }
+  if (currentEnd && currentEnd > now) return currentEnd;
+  return now + minutes * 60_000;
+}
 
 export interface Folder {
   id: string;
@@ -48,6 +62,6 @@ export function formatTime(seconds: number): string {
 
 export type StudyMessage =
   | { type: 'study:get' }
-  | { type: 'study:start'; folderId: string }
+  | { type: 'study:start'; folderId: string; minutes?: number }
   | { type: 'study:stop' }
-  | { type: 'study:resume'; checkpoint: Checkpoint };
+  | { type: 'study:resume'; checkpoint: Checkpoint; minutes?: number };

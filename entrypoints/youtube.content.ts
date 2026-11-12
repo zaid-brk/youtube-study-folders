@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
 import { createFolder, getCheckpoint, listStudyData, saveCheckpoint } from '../lib/storage';
 import { studySession } from '../lib/session';
-import { ACTIVE_SESSION_KEY, formatTime, parseVideo, type Video } from '../lib/study';
+import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, parseVideo, type Video } from '../lib/study';
 import panelCss from '../styles/study-panel.css?inline';
 import '../styles/youtube.css';
 
@@ -30,6 +30,7 @@ export default defineContentScript({
     ctx.addEventListener(window, 'keyup', keepNoteKeysLocal, { capture: true });
 
     let folderId: string | undefined;
+    let endsAt: number | undefined;
     let currentVideo: Video | undefined;
     let currentUrl = '';
     let generation = 0;
@@ -55,7 +56,7 @@ export default defineContentScript({
         return;
       }
 
-      const watch = document.querySelector('ytd-watch-flexy');
+      const watch = currentVideo ? document.querySelector('ytd-watch-flexy') : null;
       const primary = watch?.querySelector('#primary-inner');
       const sidebar = watch?.querySelector('#secondary-inner');
       const useSidebar = !!folderId && sidebar instanceof HTMLElement && sidebar.offsetWidth > 0;
@@ -94,7 +95,7 @@ export default defineContentScript({
       panel.replaceChildren();
       if (!currentVideo) {
         if (folderId) {
-          panel.append(runningIndicator(), makeStatus('Search YouTube to choose your next tutorial.'), endButton(view));
+          panel.append(sessionIndicator(), makeStatus('Search YouTube to choose your next tutorial.'), endButton(view));
         }
         return;
       }
@@ -138,6 +139,17 @@ export default defineContentScript({
       name.maxLength = 60;
       name.placeholder = 'e.g. CSCE 313 Tutorials';
       name.setAttribute('aria-label', 'New folder name');
+      const lengthLabel = document.createElement('label');
+      lengthLabel.textContent = 'Session length (minutes)';
+      const length = document.createElement('input');
+      length.id = 'study-session-length';
+      length.type = 'number';
+      length.min = '1';
+      length.step = '1';
+      length.value = '25';
+      length.required = true;
+      lengthLabel.htmlFor = length.id;
+      const commitment = makeStatus('You can end the session when the timer reaches zero.');
       const status = makeStatus();
       const start = makeButton('Start');
       start.type = 'submit';
@@ -152,15 +164,16 @@ export default defineContentScript({
       select.addEventListener('change', updateNameField);
       updateNameField();
 
-      form.append(label, select, name, makeActions(start, cancel), status);
+      form.append(label, select, name, lengthLabel, length, commitment, makeActions(start, cancel), status);
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         start.disabled = true;
         cancel.disabled = true;
         try {
           const selected = select.value === 'new' ? (await createFolder(name.value)).id : select.value;
-          await studySession({ type: 'study:start', folderId: selected });
-          folderId = selected;
+          const session = await studySession({ type: 'study:start', folderId: selected, minutes: Number(length.value) });
+          folderId = session.folderId;
+          endsAt = session.endsAt;
           updatePage();
           render();
         } catch (error) {
@@ -210,6 +223,7 @@ export default defineContentScript({
         const title = heading?.textContent?.trim() || document.title.replace(/ - YouTube$/, '') || 'YouTube video';
         const seconds = Math.floor(player.currentTime);
         save.disabled = true;
+        end.dataset.busy = 'true';
         end.disabled = true;
         try {
           await saveCheckpoint({
@@ -225,48 +239,87 @@ export default defineContentScript({
           status.textContent = 'Could not save. Your note is still here.';
         } finally {
           save.disabled = false;
-          end.disabled = false;
+          delete end.dataset.busy;
+          updateTimer();
         }
       });
-      panel.replaceChildren(runningIndicator(), heading, label, note, makeActions(save, end), status);
+      panel.replaceChildren(sessionIndicator(), heading, label, note, makeActions(save, end), status);
+      updateTimer();
     }
 
     function endButton(view: number) {
       const end = makeButton('End session');
       end.className = 'quiet';
+      end.dataset.endSession = '';
+      end.disabled = !!endsAt && endsAt > Date.now();
       end.addEventListener('click', async () => {
+        end.dataset.busy = 'true';
         end.disabled = true;
         try {
           await studySession({ type: 'study:stop' });
           folderId = undefined;
+          endsAt = undefined;
           updatePage();
           render();
-        } catch {
-          if (view === generation) panel.append(makeStatus('Could not end the session.'));
-          end.disabled = false;
+        } catch (error) {
+          if (view === generation) panel.append(makeStatus(error instanceof Error ? error.message : 'Could not end the session.'));
+          delete end.dataset.busy;
+          updateTimer();
         }
       });
       return end;
     }
 
     async function refreshSession() {
-      const savedFolderId = await studySession({ type: 'study:get' });
+      const session = await studySession({ type: 'study:get' });
       if (ctx.isInvalid) return;
-      const changed = folderId !== savedFolderId;
-      folderId = savedFolderId;
+      const changed = folderId !== session.folderId;
+      folderId = session.folderId;
+      endsAt = session.endsAt;
       sessionReady = true;
       updatePage();
       if (changed || !panel.childElementCount) render();
+      updateTimer();
     }
 
     const onSessionChanged = (changes: Record<string, unknown>, area: string) => {
-      if (area === 'local' && ACTIVE_SESSION_KEY in changes) {
+      if (area === 'local' && (ACTIVE_SESSION_KEY in changes || SESSION_END_KEY in changes)) {
         void refreshSession().catch(console.error);
       }
     };
     browser.storage.onChanged.addListener(onSessionChanged);
     ctx.onInvalidated(() => browser.storage.onChanged.removeListener(onSessionChanged));
+    const timer = window.setInterval(updateTimer, 1000);
+    ctx.onInvalidated(() => window.clearInterval(timer));
+    ctx.addEventListener(document, 'visibilitychange', updateTimer);
     void refreshSession().catch(console.error);
+
+    function sessionIndicator() {
+      const indicator = document.createElement('p');
+      indicator.className = 'session-running';
+      const label = document.createElement('span');
+      label.dataset.sessionLabel = '';
+      label.textContent = 'Session running';
+      const remaining = document.createElement('span');
+      remaining.dataset.sessionTimer = '';
+      indicator.append(label, remaining);
+      return indicator;
+    }
+
+    function updateTimer() {
+      const secondsLeft = Math.max(0, Math.ceil(((endsAt ?? 0) - Date.now()) / 1000));
+      const labelText = endsAt && secondsLeft === 0 ? 'Session complete' : 'Session running';
+      for (const label of root.querySelectorAll<HTMLElement>('[data-session-label]')) {
+        if (label.textContent !== labelText) label.textContent = labelText;
+      }
+      for (const timer of root.querySelectorAll<HTMLElement>('[data-session-timer]')) {
+        const text = endsAt ? (secondsLeft > 0 ? ' · ' + formatTime(secondsLeft) + ' left' : '') : '';
+        if (timer.textContent !== text) timer.textContent = text;
+      }
+      for (const end of root.querySelectorAll<HTMLButtonElement>('[data-end-session]')) {
+        end.disabled = secondsLeft > 0 || end.dataset.busy === 'true';
+      }
+    }
   },
 });
 
@@ -289,11 +342,4 @@ function makeActions(...buttons: HTMLButtonElement[]) {
   actions.className = 'actions';
   actions.append(...buttons);
   return actions;
-}
-
-function runningIndicator() {
-  const indicator = document.createElement('p');
-  indicator.className = 'session-running';
-  indicator.textContent = 'Session running';
-  return indicator;
 }

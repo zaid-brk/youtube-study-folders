@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkpointKey, formatTime, parseVideo, resumeUrl } from '../lib/study';
+import { checkpointKey, formatTime, parseVideo, resumeUrl, sessionDeadline } from '../lib/study';
 
 describe('study checkpoints', () => {
   it('reads a watch URL and keeps its playlist context', () => {
@@ -33,5 +33,22 @@ describe('study checkpoints', () => {
     expect(url.searchParams.get('t')).toBe('754');
     expect(url.searchParams.get('list')).toBe('PLexample');
     expect(formatTime(754)).toBe('12:34');
+  });
+});
+
+describe('session timers', () => {
+  it('keeps the active finish time when another lesson requests a shorter timer', () => {
+    expect(sessionDeadline(200_000, 1, 100_000)).toBe(200_000);
+  });
+
+  it('starts a default timer and replaces an expired timer', () => {
+    expect(sessionDeadline(undefined, undefined, 0)).toBe(25 * 60_000);
+    expect(sessionDeadline(100_000, 1, 200_000)).toBe(260_000);
+  });
+
+  it('rejects session lengths that cannot be represented as positive whole minutes', () => {
+    for (const minutes of [0, -1, 0.5, Number.MAX_SAFE_INTEGER, NaN, Infinity]) {
+      expect(() => sessionDeadline(undefined, minutes, 0)).toThrow('positive whole number');
+    }
   });
 });

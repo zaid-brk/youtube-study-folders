@@ -32,6 +32,7 @@ test('resumes two folders independently after a browser restart', async () => {
 
     await saveAt(page, 34, 'Check the condition variable predicate.');
 
+    await finishTimer(context);
     await page.getByRole('button', { name: 'End session' }).click();
     await expect(page.locator('#related')).toBeVisible();
     await expect(page.locator('#comments')).toBeVisible();
@@ -94,6 +95,13 @@ test('focus follows existing and new tabs while manual search stays available', 
     await expect(existingHome.locator('ytd-browse')).toBeHidden();
     await expect(existingHome.getByText('Session running', { exact: true })).toBeVisible();
 
+    await existingHome.evaluate(() => {
+      const retainedWatchPage = document.createElement('ytd-watch-flexy');
+      retainedWatchPage.hidden = true;
+      retainedWatchPage.innerHTML = '<div id="primary-inner"></div><div id="secondary-inner"></div>';
+      document.body.append(retainedWatchPage);
+    });
+    await expect(existingHome.getByRole('button', { name: 'End session' })).toBeVisible();
     const newHome = await context.newPage();
     await newHome.goto('https://www.youtube.com/');
     await expect(newHome.locator('ytd-browse')).toBeHidden();
@@ -106,6 +114,7 @@ test('focus follows existing and new tabs while manual search stays available', 
     await expect(newHome.getByRole('heading', { name: 'CSCE 313', exact: true })).toBeVisible();
     await expect(newHome.locator('#related')).toBeHidden();
 
+    await finishTimer(context);
     await existingHome.getByRole('button', { name: 'End session' }).click();
     await expect(existingHome.locator('ytd-browse')).toBeVisible();
     await expect(tutorial.getByText('Session running', { exact: true })).toHaveCount(0);
@@ -116,6 +125,69 @@ test('focus follows existing and new tabs while manual search stays available', 
     await rm(profile, { recursive: true, force: true });
   }
 });
+
+test('timer rejects early exits, survives restart, and unlocks without erasing notes', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-timer-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Timed practice');
+    await expect(page.getByRole('button', { name: 'End session' })).toBeDisabled();
+    await expect(page.locator('[data-session-timer]')).toContainText('left');
+    await saveAt(page, 9, 'Review this after the timer.');
+    await expect(page.getByRole('button', { name: 'End session' })).toBeDisabled();
+
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+    const popup = await context.newPage();
+    await popup.goto(new URL('/popup.html', worker.url()).href);
+    const deadline = await popup.evaluate("chrome.storage.local.get('study-session-ends-at').then(value => value['study-session-ends-at'])");
+    const rejected = await popup.evaluate("chrome.runtime.sendMessage({type: 'study:stop'})");
+    expect(rejected).toMatchObject({ error: expect.stringContaining('Session locked') });
+
+    await popup.locator('#session-length').fill('1');
+    const resumed = await resumeFrom(context, popup, 'Timed practice');
+    await expect(resumed.getByRole('button', { name: 'End session' })).toBeDisabled();
+    expect(await popup.evaluate("chrome.storage.local.get('study-session-ends-at').then(value => value['study-session-ends-at'])")).toBe(deadline);
+
+    await context.close();
+    context = await openBrowser(profile);
+    const home = await context.newPage();
+    await home.goto('https://www.youtube.com/');
+    await expect(home.getByRole('button', { name: 'End session' })).toBeVisible();
+    await expect(home.getByRole('button', { name: 'End session' })).toBeDisabled();
+    await expect(home.locator('ytd-guide-renderer')).toBeHidden();
+    await expect(home.locator('ytd-mini-guide-renderer')).toBeHidden();
+    await expect(home.locator('ytd-masthead #start')).toBeHidden();
+    await expect(home.locator('ytd-masthead #end')).toBeHidden();
+    await expect(home.getByRole('textbox', { name: 'Search YouTube', exact: true })).toBeVisible();
+    const reopenedWorker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+    const reopenedPopup = await context.newPage();
+    await reopenedPopup.goto(new URL('/popup.html', reopenedWorker.url()).href);
+    expect(await reopenedPopup.evaluate("chrome.storage.local.get('study-session-ends-at').then(value => value['study-session-ends-at'])")).toBe(deadline);
+
+    const tutorial = await context.newPage();
+    await tutorial.goto(video);
+    const note = tutorial.getByRole('textbox', { name: 'Notes and next steps' });
+    await note.fill('Draft still here while the countdown ticks.');
+    await reopenedPopup.evaluate("chrome.storage.local.set({'study-session-ends-at': Date.now() + 300})");
+    await expect(tutorial.getByRole('button', { name: 'End session' })).toBeEnabled();
+    await expect(note).toHaveValue('Draft still here while the countdown ticks.');
+    await home.getByRole('button', { name: 'End session' }).click();
+    await expect(home.locator('ytd-guide-renderer')).toBeVisible();
+    await expect(home.locator('ytd-masthead #start')).toBeVisible();
+    await expect(home.locator('ytd-browse')).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
+async function finishTimer(context: BrowserContext) {
+  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  await worker.evaluate("chrome.storage.local.set({'study-session-ends-at': Date.now() - 1})");
+}
 
 async function openBrowser(profile: string) {
   const context = await chromium.launchPersistentContext(profile, {
@@ -131,7 +203,7 @@ async function openBrowser(profile: string) {
         : '<ytd-browse>Homepage videos and suggestions</ytd-browse>';
       return route.fulfill({
         contentType: 'text/html',
-        body: '<!doctype html><html><body><form action="/results"><input name="search_query" aria-label="Search YouTube"><button type="submit">Search</button></form>' + content + '</body></html>',
+        body: '<!doctype html><html><body><ytd-masthead><div id="start">Menu and logo</div><form action="/results"><input name="search_query" aria-label="Search YouTube"><button type="submit">Search</button></form><div id="end">Account and notifications</div></ytd-masthead><ytd-guide-renderer>Subscriptions</ytd-guide-renderer><ytd-mini-guide-renderer>Shortcuts</ytd-mini-guide-renderer>' + content + '</body></html>',
       });
     }
     return route.fulfill({

@@ -1,6 +1,6 @@
 # YouTube Study Folders
 
-A Chrome extension for studying with YouTube tutorials. Start a study session, pick a folder, then save your notes and playback position together. A green indicator shows that a session is running. Focus mode applies to all YouTube tabs until you end the session, including after a browser restart. The homepage and browsing feeds are hidden while search remains available. Resume from the extension popup when you are ready to continue.
+A Chrome extension for studying with YouTube tutorials. Start a study session, pick a folder, then save your notes and playback position together. A green indicator shows that a session is running. Choose a session length in minutes before starting. The green indicator shows the time remaining. End session becomes available when the timer reaches zero. Focus mode applies to all YouTube tabs, including after a browser restart. The homepage, browsing feeds, navigation sidebar, and header distractions are hidden while search remains available. Resume from the extension popup when you are ready to continue.
 
 ## Try it locally
 
@@ -17,8 +17,10 @@ For development, `npm run dev` opens a browser with the extension loaded. Chrome
 
 - **Content script.** Adds the study controls to the YouTube watch page. It listens for in-page navigation and reads the timestamp from the active video when you save. During a study session, the sidebar shows the scratchpad and current playlist. Comments and recommendations are hidden. While the scratchpad has focus, typing takes precedence over YouTube shortcuts.
 - **Popup.** Lists folders and saved videos. Each folder's Resume button opens its most recently saved checkpoint.
-- **Background worker.** Tracks each tab's study folder and a shared focus setting. New YouTube tabs use the active folder. Ending a session turns focus mode off across all tabs. To resume, it creates a tab, associates that tab with the folder, then opens the original watch URL with the saved timestamp and playlist.
+- **Background worker.** Tracks each tab's study folder and a shared focus setting. New YouTube tabs use the active folder. The worker enforces a persisted finish time, so refreshes, restarts, and resuming another lesson cannot shorten an active timer. Ending a session turns focus mode off across all tabs. To resume, it creates a tab, associates that tab with the folder, then opens the original watch URL with the saved timestamp and playlist.
 - **Local storage.** Folders have stable IDs. Checkpoints use the folder ID and video ID together, so the same video can have different notes in different folders. Each checkpoint has its own storage key, allowing separate tabs to save different checkpoints independently.
+
+Sessions saved by earlier versions can be ended normally. Newly started sessions use the timer. Chrome lets users disable or uninstall extensions.
 
 The extension runs on desktop YouTube. Folders and notes are stored locally in the Chrome profile.
 

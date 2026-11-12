@@ -5,6 +5,7 @@ import './style.css';
 
 const form = document.querySelector('form')!;
 const input = document.querySelector<HTMLInputElement>('#folder-name')!;
+const sessionLength = document.querySelector<HTMLInputElement>('#session-length')!;
 const status = document.querySelector('#status')!;
 const foldersElement = document.querySelector('#folders')!;
 
@@ -68,9 +69,11 @@ function resumeButton(checkpoint: Checkpoint, label: string) {
   button.type = 'button';
   button.textContent = label;
   button.addEventListener('click', async () => {
+    if (!sessionLength.reportValidity()) return;
     button.disabled = true;
     try {
-      await studySession({ type: 'study:resume', checkpoint });
+      await studySession({ type: 'study:resume', checkpoint, minutes: Number(sessionLength.value) });
+      button.disabled = false;
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : 'Could not resume this checkpoint.';
       button.disabled = false;
