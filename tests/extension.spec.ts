@@ -264,6 +264,11 @@ async function startFolder(page: Page, name: string) {
   await start.click();
   await page.getByRole('combobox', { name: 'Study folder' }).selectOption('new');
   await page.getByRole('textbox', { name: 'New folder name' }).fill(name);
+  const length = page.getByRole('spinbutton', { name: 'Session length (minutes)', exact: true });
+  await expect(length).toHaveValue('');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveCount(0);
+  await length.fill('2');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
@@ -293,6 +298,12 @@ async function saveAt(page: Page, seconds: number, note: string) {
 
 async function resumeFrom(context: BrowserContext, popup: Page, folder: string) {
   const card = popup.locator('article').filter({ has: popup.getByRole('heading', { name: folder }) });
+  const length = popup.locator('#session-length');
+  if (await length.inputValue() === '') {
+    await card.getByRole('button', { name: 'Resume', exact: true }).click();
+    expect(await length.evaluate((input: HTMLInputElement) => input.validity.valueMissing)).toBe(true);
+    await length.fill('1');
+  }
   const [tab] = await Promise.all([
     context.waitForEvent('page'),
     card.getByRole('button', { name: 'Resume', exact: true }).click(),

@@ -41,13 +41,13 @@ describe('session timers', () => {
     expect(sessionDeadline(200_000, 1, 100_000)).toBe(200_000);
   });
 
-  it('starts a default timer and replaces an expired timer', () => {
-    expect(sessionDeadline(undefined, undefined, 0)).toBe(25 * 60_000);
+  it('starts the requested timer and replaces an expired timer', () => {
+    expect(sessionDeadline(undefined, 12, 0)).toBe(12 * 60_000);
     expect(sessionDeadline(100_000, 1, 200_000)).toBe(260_000);
   });
 
   it('rejects session lengths that cannot be represented as positive whole minutes', () => {
-    for (const minutes of [0, -1, 0.5, Number.MAX_SAFE_INTEGER, NaN, Infinity]) {
+    for (const minutes of [undefined, 0, -1, 0.5, Number.MAX_SAFE_INTEGER, NaN, Infinity]) {
       expect(() => sessionDeadline(undefined, minutes, 0)).toThrow('positive whole number');
     }
   });

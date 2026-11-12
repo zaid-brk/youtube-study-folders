@@ -146,7 +146,7 @@ export default defineContentScript({
       length.type = 'number';
       length.min = '1';
       length.step = '1';
-      length.value = '25';
+      length.placeholder = 'Enter minutes';
       length.required = true;
       lengthLabel.htmlFor = length.id;
       const commitment = makeStatus('You can end the session when the timer reaches zero.');

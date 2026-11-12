@@ -6,8 +6,8 @@ export interface StudySession {
   endsAt?: number;
 }
 
-export function sessionDeadline(currentEnd: number | undefined, minutes = 25, now = Date.now()): number {
-  if (!Number.isSafeInteger(minutes) || minutes < 1 || !Number.isSafeInteger(now + minutes * 60_000)) {
+export function sessionDeadline(currentEnd: number | undefined, minutes: number | undefined, now = Date.now()): number {
+  if (typeof minutes !== 'number' || !Number.isSafeInteger(minutes) || minutes < 1 || !Number.isSafeInteger(now + minutes * 60_000)) {
     throw new Error('Choose a valid positive whole number of minutes.');
   }
   if (currentEnd && currentEnd > now) return currentEnd;
@@ -62,6 +62,6 @@ export function formatTime(seconds: number): string {
 
 export type StudyMessage =
   | { type: 'study:get' }
-  | { type: 'study:start'; folderId: string; minutes?: number }
+  | { type: 'study:start'; folderId: string; minutes: number }
   | { type: 'study:stop' }
-  | { type: 'study:resume'; checkpoint: Checkpoint; minutes?: number };
+  | { type: 'study:resume'; checkpoint: Checkpoint; minutes: number };
