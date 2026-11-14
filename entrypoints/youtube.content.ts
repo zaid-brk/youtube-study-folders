@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import { createFolder, getCheckpoint, getNoteDraft, listStudyData, saveCheckpoint } from '../lib/storage';
 import { noteTimestamps } from '../lib/notes';
 import { studySession } from '../lib/session';
-import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, parseVideo, type Video, type Folder } from '../lib/study';
+import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, latestNote, parseVideo, type Video, type Folder } from '../lib/study';
 import panelCss from '../styles/study-panel.css?inline';
 import '../styles/youtube.css';
 
@@ -60,8 +60,13 @@ export default defineContentScript({
       const watch = currentVideo ? document.querySelector('ytd-watch-flexy') : null;
       const primary = watch?.querySelector('#primary-inner');
       const sidebar = watch?.querySelector('#secondary-inner');
-      const useSidebar = !!folderId && sidebar instanceof HTMLElement && sidebar.offsetWidth > 0;
-      const parent = useSidebar ? sidebar : primary ?? document.body;
+      const sidebarBounds = sidebar?.getBoundingClientRect();
+      const primaryBounds = primary?.getBoundingClientRect();
+      const useSidebar = !!folderId && !!sidebarBounds && sidebarBounds.width > 0 &&
+        sidebarBounds.left >= 0 && sidebarBounds.right <= window.innerWidth;
+      const primaryFits = primaryBounds && primaryBounds.width > 0 &&
+        primaryBounds.left >= 0 && primaryBounds.right <= window.innerWidth;
+      const parent = useSidebar ? sidebar : primaryFits ? primary : document.body;
       if (!parent) return;
 
       host.dataset.placement = parent === document.body ? 'floating' : 'inline';
@@ -205,7 +210,7 @@ export default defineContentScript({
       note.rows = 7;
       note.maxLength = 20_000;
       note.placeholder = 'What do you want to pick up next time?';
-      note.value = draft?.note ?? checkpoint?.note ?? '';
+      note.value = latestNote(checkpoint, draft)?.note ?? '';
       label.htmlFor = note.id;
       const status = makeStatus(checkpoint ? 'Saved at ' + formatTime(checkpoint.seconds) : '');
       const draftStatus = document.createElement('p');

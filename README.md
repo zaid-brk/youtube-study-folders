@@ -11,14 +11,14 @@ A Chrome extension for studying with YouTube tutorials. Start a study session, p
 5. Open a YouTube tutorial and click **Start Study Session** below the player. Create a folder, write a note, then click **Save checkpoint**.
 6. Open the extension popup and click **Resume** on that folder. To open an older video, expand the folder's saved videos.
 
-For development, `npm run dev` opens a browser with the extension loaded. Chrome keeps saved folders and checkpoints in that browser profile. The extension uses explicit saves, so click **Save checkpoint** before you leave a video.
+For development, `npm run dev` opens a browser with the extension loaded. Chrome keeps saved folders and checkpoints in that browser profile. Notes save automatically. Click **Save checkpoint** to set the playback time you want to resume from. Use **Insert timestamp** to mark moments in your notes, then use the time buttons below the editor to jump back. The popup offers **Rename** and **Export Markdown** for each folder.
 
 ## How it works
 
 - **Content script.** Adds the study controls to the YouTube watch page. It listens for in-page navigation and reads the timestamp from the active video when you save. During a study session, the sidebar shows the scratchpad and current playlist. Comments and recommendations are hidden. While the scratchpad has focus, typing takes precedence over YouTube shortcuts.
 - **Popup.** Lists folders and saved videos. Each folder's Resume button opens its most recently saved checkpoint.
 - **Background worker.** Tracks each tab's study folder and a shared focus setting. New YouTube tabs use the active folder. The worker enforces a persisted finish time, so refreshes, restarts, and resuming another lesson cannot shorten an active timer. Ending a session turns focus mode off across all tabs. To resume, it creates a tab, associates that tab with the folder, then opens the original watch URL with the saved timestamp and playlist.
-- **Local storage.** Folders have stable IDs. Checkpoints use the folder ID and video ID together, so the same video can have different notes in different folders. Each checkpoint has its own storage key, allowing separate tabs to save different checkpoints independently.
+- **Local storage.** Folders have stable IDs. Checkpoints use the folder ID and video ID together, so the same video can have different notes in different folders. Each checkpoint has its own storage key, allowing separate tabs to save different checkpoints independently. Drafts use separate keys, so autosaving text preserves the explicit resume time.
 
 Sessions saved by earlier versions can be ended normally. Newly started sessions use the timer. Chrome lets users disable or uninstall extensions.
 

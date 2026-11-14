@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { checkpointKey, type Checkpoint, type Folder, type NoteDraft } from './study';
+import { checkpointKey, latestNote, type Checkpoint, type Folder, type NoteDraft } from './study';
 
 function folderName(rawName: string) {
   const name = rawName.trim();
@@ -34,7 +34,7 @@ export async function listStudyData() {
     const checkpoint = checkpoints.get(key);
     checkpoints.set(key, {
       ...checkpoint,
-      ...draft,
+      ...latestNote(checkpoint, draft)!,
       seconds: checkpoint?.seconds ?? 0,
       updatedAt: Math.max(checkpoint?.updatedAt ?? 0, draft.updatedAt),
     });

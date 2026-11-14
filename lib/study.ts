@@ -32,11 +32,12 @@ export interface NoteDraft extends Video {
 }
 
 export interface Checkpoint extends NoteDraft {
-  folderId: string;
-  title: string;
   seconds: number;
-  note: string;
-  updatedAt: number;
+}
+
+export function latestNote(checkpoint?: Checkpoint, draft?: NoteDraft): NoteDraft | undefined {
+  if (!checkpoint) return draft;
+  return draft && draft.updatedAt > checkpoint.updatedAt ? draft : checkpoint;
 }
 
 export function parseVideo(address: string): Video | undefined {

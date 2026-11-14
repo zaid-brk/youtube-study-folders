@@ -8,11 +8,10 @@ export interface NoteTimestamp {
 
 export function noteTimestamps(note: string): NoteTimestamp[] {
   const timestamps: NoteTimestamp[] = [];
-  // Code spans and fences are skipped so examples such as array slices stay intact.
-  const pattern = /(`+)[\s\S]*?\1|\[(\d+):([0-5]\d)\]/g;
+  const pattern = /^ {0,3}(~{3,})[^\n]*(?:\n|$)[\s\S]*?(?:^ {0,3}\1~*[ \t]*(?:\n|$)|(?![\s\S]))|^(?: {4}|\t)[^\n]*|(`+)[\s\S]*?\2|\[(\d+):([0-5]\d)\]/gm;
   for (const match of note.matchAll(pattern)) {
-    if (match[2] === undefined) continue;
-    const seconds = Number(match[2]) * 60 + Number(match[3]);
+    if (match[3] === undefined) continue;
+    const seconds = Number(match[3]) * 60 + Number(match[4]);
     if (!Number.isSafeInteger(seconds)) continue;
     timestamps.push({ start: match.index, end: match.index + match[0].length, seconds });
   }

@@ -245,6 +245,12 @@ test('inserts timestamps at the cursor and restores clickable video markers', as
     await seekTo(page, 30);
     await page.getByRole('button', { name: 'Jump to 0:09', exact: true }).click();
     await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => Math.floor(video.currentTime))).toBe(9);
+    await page.addStyleTag({ content: '#secondary-inner { position: absolute; left: 900px; } #primary-inner { width: 1000px; }' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(async () => {
+      const bounds = await note.boundingBox();
+      return !!bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390;
+    }).toBe(true);
   } finally {
     await context?.close();
     await rm(profile, { recursive: true, force: true });
@@ -275,6 +281,28 @@ test('downloads the latest draft as a folder Markdown file', async () => {
     expect(markdown).toContain('# Export practice');
     expect(markdown).toContain('## Thread Pools');
     expect(markdown).toContain('Latest notes [0:09](https://www.youtube.com/watch?v=abcdefghijk&list=PLexample&t=9)');
+    await worker.evaluate(async () => {
+      const storage = (globalThis as any).chrome.storage.local;
+      const values = await storage.get(null);
+      const draft = Object.entries(values).find(([key]) => key.startsWith('draft:'))![1] as any;
+      await storage.set({
+        ['checkpoint:' + draft.folderId + ':' + draft.videoId]: {
+          ...draft, title: 'Newer checkpoint', note: 'Recovered explicit save.',
+          seconds: 34, updatedAt: draft.updatedAt + 1,
+        },
+      });
+    });
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Recovered explicit save.');
+    await expect(page.getByRole('status')).toHaveText('Saved at 0:34');
+    const [recoveredDownload] = await Promise.all([
+      popup.waitForEvent('download'),
+      popup.getByRole('button', { name: 'Export Markdown' }).click(),
+    ]);
+    const recoveredMarkdown = await readFile((await recoveredDownload.path())!, 'utf8');
+    expect(recoveredMarkdown).toContain('Recovered explicit save.');
+    expect(recoveredMarkdown).toContain('## Newer checkpoint');
+    expect(recoveredMarkdown).not.toContain('Latest notes');
   } finally {
     await context?.close();
     await rm(profile, { recursive: true, force: true });
