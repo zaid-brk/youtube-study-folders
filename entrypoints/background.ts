@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { saveNoteDraft } from '../lib/storage';
 import {
   ACTIVE_SESSION_KEY,
   SESSION_END_KEY,
@@ -16,7 +17,7 @@ function tabKey(tabId: number) {
 export default defineBackground(() => {
   let operations = Promise.resolve<StudySession>({});
   browser.runtime.onMessage.addListener((message: StudyMessage, sender, sendResponse) => {
-    if (!['study:get', 'study:start', 'study:stop', 'study:resume'].includes(message?.type)) return;
+    if (!['study:get', 'study:start', 'study:stop', 'study:resume', 'study:save-draft'].includes(message?.type)) return;
 
     operations = operations.catch(() => ({})).then(() => handleMessage(message, sender.tab?.id));
     operations
@@ -34,6 +35,10 @@ export default defineBackground(() => {
 });
 
 async function handleMessage(message: StudyMessage, tabId?: number): Promise<StudySession> {
+  if (message.type === 'study:save-draft') {
+    await saveNoteDraft(message.draft);
+    return {};
+  }
   const stored = await browser.storage.local.get([ACTIVE_SESSION_KEY, SESSION_END_KEY]);
   const activeFolder = stored[ACTIVE_SESSION_KEY] as string | undefined;
   const endsAt = stored[SESSION_END_KEY] as number | undefined;

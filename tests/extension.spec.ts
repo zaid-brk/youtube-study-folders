@@ -1,5 +1,5 @@
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -26,7 +26,7 @@ test('resumes two folders independently after a browser restart', async () => {
     await expect(scratchpad).toHaveValue('tkf tet');
     await expect(page.locator('ytd-watch-flexy')).not.toHaveAttribute('data-shortcut-count', /.+/);
     await scratchpad.press('Tab');
-    await expect(page.getByRole('button', { name: 'Save checkpoint' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Insert timestamp' })).toBeFocused();
     await page.keyboard.press('t');
     await expect(page.locator('ytd-watch-flexy')).toHaveAttribute('theater', '');
 
@@ -184,6 +184,169 @@ test('timer rejects early exits, survives restart, and unlocks without erasing n
   }
 });
 
+test('autosaves drafts by folder and video without moving the resume checkpoint', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-drafts-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Systems');
+    await saveAt(page, 9, 'Original checkpoint note.');
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('New draft without clicking Save checkpoint.');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('New draft without clicking Save checkpoint.');
+    await expect(page.getByRole('status')).toHaveText('Saved at 0:09');
+
+    await page.goto(otherVideo);
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('Draft for another lesson.');
+    await page.goto(video);
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('New draft without clicking Save checkpoint.');
+    await page.goto(otherVideo);
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Draft for another lesson.');
+
+    await finishTimer(context);
+    await page.getByRole('button', { name: 'End session' }).click();
+    await page.goto(video);
+    await startFolder(page, 'Interview practice');
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('');
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('Separate draft for the same video.');
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Separate draft for the same video.');
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
+test('inserts timestamps at the cursor and restores clickable video markers', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-timestamps-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Timestamp practice');
+    const note = page.getByRole('textbox', { name: 'Notes and next steps' });
+    await note.fill('First  last');
+    await note.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(6, 6));
+    await seekTo(page, 9);
+    await page.getByRole('button', { name: 'Insert timestamp' }).click();
+    await expect(note).toHaveValue('First [0:09] last');
+    await note.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(input.value.length, input.value.length));
+    await seekTo(page, 20);
+    await page.getByRole('button', { name: 'Insert timestamp' }).click();
+    await expect(note).toHaveValue('First [0:09] last[0:20]');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Jump to 0:09', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Jump to 0:20', exact: true })).toBeVisible();
+    await seekTo(page, 30);
+    await page.getByRole('button', { name: 'Jump to 0:09', exact: true }).click();
+    await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => Math.floor(video.currentTime))).toBe(9);
+    await page.addStyleTag({ content: '#secondary-inner { position: absolute; left: 900px; } #primary-inner { width: 1000px; }' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(async () => {
+      const bounds = await note.boundingBox();
+      return !!bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390;
+    }).toBe(true);
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
+test('downloads the latest draft as a folder Markdown file', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-export-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Export practice');
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('Latest notes [0:09]');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+    const popup = await context.newPage();
+    await popup.goto(new URL('/popup.html', worker.url()).href);
+    const [download] = await Promise.all([
+      popup.waitForEvent('download'),
+      popup.getByRole('button', { name: 'Export Markdown' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('Export practice.md');
+    const file = await download.path();
+    expect(file).not.toBeNull();
+    const markdown = await readFile(file!, 'utf8');
+    expect(markdown).toContain('# Export practice');
+    expect(markdown).toContain('## Thread Pools');
+    expect(markdown).toContain('Latest notes [0:09](https://www.youtube.com/watch?v=abcdefghijk&list=PLexample&t=9)');
+    await worker.evaluate(async () => {
+      const storage = (globalThis as any).chrome.storage.local;
+      const values = await storage.get(null);
+      const draft = Object.entries(values).find(([key]) => key.startsWith('draft:'))![1] as any;
+      await storage.set({
+        ['checkpoint:' + draft.folderId + ':' + draft.videoId]: {
+          ...draft, title: 'Newer checkpoint', note: 'Recovered explicit save.',
+          seconds: 34, updatedAt: draft.updatedAt + 1,
+        },
+      });
+    });
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Recovered explicit save.');
+    await expect(page.getByRole('status')).toHaveText('Saved at 0:34');
+    const [recoveredDownload] = await Promise.all([
+      popup.waitForEvent('download'),
+      popup.getByRole('button', { name: 'Export Markdown' }).click(),
+    ]);
+    const recoveredMarkdown = await readFile((await recoveredDownload.path())!, 'utf8');
+    expect(recoveredMarkdown).toContain('Recovered explicit save.');
+    expect(recoveredMarkdown).toContain('## Newer checkpoint');
+    expect(recoveredMarkdown).not.toContain('Latest notes');
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
+test('renames a folder without losing notes or changing its active session', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-rename-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Old name');
+    await saveAt(page, 9, 'Keep this note.');
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+    const popup = await context.newPage();
+    await popup.goto(new URL('/popup.html', worker.url()).href);
+    const rename = popup.getByRole('button', { name: 'Rename', exact: true });
+    await expect(rename).toBeVisible();
+    await rename.click();
+    const name = popup.getByRole('textbox', { name: 'Folder name', exact: true });
+    await name.fill('   ');
+    await popup.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(popup.getByRole('status')).toContainText('between 1 and 60');
+    await name.fill('Ignored name');
+    await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(popup.getByRole('heading', { name: 'Old name', exact: true })).toBeVisible();
+    await rename.click();
+    await popup.getByRole('textbox', { name: 'Folder name', exact: true }).fill('CSCE 313 Tutorials');
+    await popup.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(popup.getByRole('heading', { name: 'CSCE 313 Tutorials', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CSCE 313 Tutorials', exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Keep this note.');
+    await expect(page.getByRole('status')).toHaveText('Saved at 0:09');
+    await expect(page.getByRole('button', { name: 'End session' })).toBeDisabled();
+    await popup.reload();
+    await expect(popup.getByRole('heading', { name: 'CSCE 313 Tutorials', exact: true })).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
 async function finishTimer(context: BrowserContext) {
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   await worker.evaluate("chrome.storage.local.set({'study-session-ends-at': Date.now() - 1})");
@@ -273,7 +436,7 @@ async function startFolder(page: Page, name: string) {
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
 
-async function saveAt(page: Page, seconds: number, note: string) {
+async function seekTo(page: Page, seconds: number) {
   const player = page.locator('video');
   if (!(await player.getAttribute('src'))) {
     await player.evaluate((element, data) => {
@@ -291,6 +454,10 @@ async function saveAt(page: Page, seconds: number, note: string) {
     const video = document.querySelector('video');
     return !!video && !video.seeking && Math.floor(video.currentTime) === time;
   }, seconds);
+}
+
+async function saveAt(page: Page, seconds: number, note: string) {
+  await seekTo(page, seconds);
   await page.getByRole('textbox', { name: 'Notes and next steps' }).fill(note);
   await page.getByRole('button', { name: 'Save checkpoint' }).click();
   await expect(page.getByRole('status')).toContainText('Saved at');
