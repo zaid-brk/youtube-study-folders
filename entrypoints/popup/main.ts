@@ -1,4 +1,5 @@
 import { createFolder, listStudyData } from '../../lib/storage';
+import { exportFolderMarkdown } from '../../lib/notes';
 import { studySession } from '../../lib/session';
 import { formatTime, type Checkpoint } from '../../lib/study';
 import './style.css';
@@ -37,7 +38,32 @@ async function renderFolders() {
     const card = document.createElement('article');
     const heading = document.createElement('h2');
     heading.textContent = folder.name;
-    card.append(heading);
+    const actions = document.createElement('div');
+    actions.className = 'folder-actions';
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.textContent = 'Export Markdown';
+    download.addEventListener('click', async () => {
+      download.disabled = true;
+      try {
+        const latest = await listStudyData();
+        const currentFolder = latest.folders.find((saved) => saved.id === folder.id) ?? folder;
+        const markdown = exportFolderMarkdown(currentFolder, latest.checkpoints);
+        const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = currentFolder.name.replace(/[\\/:*?"<>|]/g, '_') + '.md';
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        status.textContent = '';
+      } catch {
+        status.textContent = 'Could not export this folder.';
+      } finally {
+        download.disabled = false;
+      }
+    });
+    actions.append(download);
+    card.append(heading, actions);
 
     const savedVideos = checkpoints.filter((checkpoint) => checkpoint.folderId === folder.id);
     const [latest] = savedVideos;

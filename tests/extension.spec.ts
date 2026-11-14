@@ -1,5 +1,5 @@
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -245,6 +245,36 @@ test('inserts timestamps at the cursor and restores clickable video markers', as
     await seekTo(page, 30);
     await page.getByRole('button', { name: 'Jump to 0:09', exact: true }).click();
     await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => Math.floor(video.currentTime))).toBe(9);
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
+test('downloads the latest draft as a folder Markdown file', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-export-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Export practice');
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('Latest notes [0:09]');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+    const popup = await context.newPage();
+    await popup.goto(new URL('/popup.html', worker.url()).href);
+    const [download] = await Promise.all([
+      popup.waitForEvent('download'),
+      popup.getByRole('button', { name: 'Export Markdown' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('Export practice.md');
+    const file = await download.path();
+    expect(file).not.toBeNull();
+    const markdown = await readFile(file!, 'utf8');
+    expect(markdown).toContain('# Export practice');
+    expect(markdown).toContain('## Thread Pools');
+    expect(markdown).toContain('Latest notes [0:09](https://www.youtube.com/watch?v=abcdefghijk&list=PLexample&t=9)');
   } finally {
     await context?.close();
     await rm(profile, { recursive: true, force: true });
