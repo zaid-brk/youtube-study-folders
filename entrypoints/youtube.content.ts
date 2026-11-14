@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { createFolder, getCheckpoint, getNoteDraft, listStudyData, saveCheckpoint } from '../lib/storage';
+import { noteTimestamps } from '../lib/notes';
 import { studySession } from '../lib/session';
 import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, parseVideo, type Video } from '../lib/study';
 import panelCss from '../styles/study-panel.css?inline';
@@ -233,18 +234,56 @@ export default defineContentScript({
           }
         });
       }
-      note.addEventListener('input', autosave);
+      const timestampLinks = document.createElement('nav');
+      timestampLinks.className = 'timestamp-links';
+      timestampLinks.setAttribute('aria-label', 'Video timestamps');
+
+      function showTimestamps() {
+        timestampLinks.replaceChildren();
+        const times = new Set(noteTimestamps(note.value).map((timestamp) => timestamp.seconds));
+        for (const seconds of times) {
+          const jump = makeButton(formatTime(seconds));
+          jump.className = 'quiet';
+          jump.setAttribute('aria-label', 'Jump to ' + formatTime(seconds));
+          jump.addEventListener('click', () => {
+            const player = activePlayer(video);
+            if (player) player.currentTime = Math.min(seconds, player.duration || seconds);
+            else status.textContent = 'Wait for this tutorial to load.';
+          });
+          timestampLinks.append(jump);
+        }
+      }
+      const insert = makeButton('Insert timestamp');
+      insert.className = 'quiet';
+      insert.addEventListener('click', () => {
+        const player = activePlayer(video);
+        if (!player) {
+          status.textContent = 'Wait for this tutorial to load.';
+          return;
+        }
+        const stamp = '[' + formatTime(Math.floor(player.currentTime)) + ']';
+        if (note.value.length - (note.selectionEnd - note.selectionStart) + stamp.length > note.maxLength) {
+          status.textContent = 'The note is full. Remove some text before inserting a timestamp.';
+          return;
+        }
+        note.setRangeText(stamp, note.selectionStart, note.selectionEnd, 'end');
+        note.focus();
+        autosave();
+        showTimestamps();
+      });
+      note.addEventListener('input', () => {
+        autosave();
+        showTimestamps();
+      });
+      showTimestamps();
       retry.addEventListener('click', autosave);
       const save = makeButton('Save checkpoint');
       const end = endButton(view);
       save.addEventListener('click', async () => {
         const pageVideo = parseVideo(location.href);
         const watch = document.querySelector('ytd-watch-flexy');
-        const player = watch?.querySelector<HTMLVideoElement>('video.html5-main-video, video');
-        const playerVideoId = watch?.getAttribute('video-id');
-        if (pageVideo?.videoId !== video.videoId || (playerVideoId && playerVideoId !== video.videoId) ||
-            !player || player.readyState === 0 || player.seeking ||
-            !Number.isFinite(player.currentTime) || player.closest('.ad-showing')) {
+        const player = activePlayer(video);
+        if (!pageVideo || !player) {
           status.textContent = 'Wait for the tutorial to load before saving.';
           return;
         }
@@ -273,7 +312,7 @@ export default defineContentScript({
           updateTimer();
         }
       });
-      panel.replaceChildren(sessionIndicator(), heading, label, note, draftStatus, retry, makeActions(save, end), status);
+      panel.replaceChildren(sessionIndicator(), heading, label, note, timestampLinks, draftStatus, retry, makeActions(insert, save, end), status);
       updateTimer();
     }
 
@@ -372,4 +411,15 @@ function makeActions(...buttons: HTMLButtonElement[]) {
   actions.className = 'actions';
   actions.append(...buttons);
   return actions;
+}
+
+function activePlayer(video: Video) {
+  const watch = document.querySelector('ytd-watch-flexy');
+  const player = watch?.querySelector<HTMLVideoElement>('video.html5-main-video, video');
+  const playerVideoId = watch?.getAttribute('video-id');
+  if (parseVideo(location.href)?.videoId !== video.videoId ||
+      (playerVideoId && playerVideoId !== video.videoId) || !player ||
+      player.readyState === 0 || player.seeking || !Number.isFinite(player.currentTime) ||
+      player.closest('.ad-showing')) return;
+  return player;
 }

@@ -26,7 +26,7 @@ test('resumes two folders independently after a browser restart', async () => {
     await expect(scratchpad).toHaveValue('tkf tet');
     await expect(page.locator('ytd-watch-flexy')).not.toHaveAttribute('data-shortcut-count', /.+/);
     await scratchpad.press('Tab');
-    await expect(page.getByRole('button', { name: 'Save checkpoint' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Insert timestamp' })).toBeFocused();
     await page.keyboard.press('t');
     await expect(page.locator('ytd-watch-flexy')).toHaveAttribute('theater', '');
 
@@ -220,6 +220,37 @@ test('autosaves drafts by folder and video without moving the resume checkpoint'
   }
 });
 
+test('inserts timestamps at the cursor and restores clickable video markers', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-timestamps-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Timestamp practice');
+    const note = page.getByRole('textbox', { name: 'Notes and next steps' });
+    await note.fill('First  last');
+    await note.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(6, 6));
+    await seekTo(page, 9);
+    await page.getByRole('button', { name: 'Insert timestamp' }).click();
+    await expect(note).toHaveValue('First [0:09] last');
+    await note.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(input.value.length, input.value.length));
+    await seekTo(page, 20);
+    await page.getByRole('button', { name: 'Insert timestamp' }).click();
+    await expect(note).toHaveValue('First [0:09] last[0:20]');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Jump to 0:09', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Jump to 0:20', exact: true })).toBeVisible();
+    await seekTo(page, 30);
+    await page.getByRole('button', { name: 'Jump to 0:09', exact: true }).click();
+    await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => Math.floor(video.currentTime))).toBe(9);
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
 async function finishTimer(context: BrowserContext) {
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   await worker.evaluate("chrome.storage.local.set({'study-session-ends-at': Date.now() - 1})");
@@ -309,7 +340,7 @@ async function startFolder(page: Page, name: string) {
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
 
-async function saveAt(page: Page, seconds: number, note: string) {
+async function seekTo(page: Page, seconds: number) {
   const player = page.locator('video');
   if (!(await player.getAttribute('src'))) {
     await player.evaluate((element, data) => {
@@ -327,6 +358,10 @@ async function saveAt(page: Page, seconds: number, note: string) {
     const video = document.querySelector('video');
     return !!video && !video.seeking && Math.floor(video.currentTime) === time;
   }, seconds);
+}
+
+async function saveAt(page: Page, seconds: number, note: string) {
+  await seekTo(page, seconds);
   await page.getByRole('textbox', { name: 'Notes and next steps' }).fill(note);
   await page.getByRole('button', { name: 'Save checkpoint' }).click();
   await expect(page.getByRole('status')).toContainText('Saved at');

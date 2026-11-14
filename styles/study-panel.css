@@ -58,3 +58,5 @@ p:empty { display: none; }
 @media (prefers-color-scheme: dark) {
   .session-running { color: #4ade80; }
 }
+
+.timestamp-links { display: flex; flex-wrap: wrap; gap: 6px; }
