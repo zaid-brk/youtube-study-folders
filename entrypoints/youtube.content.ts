@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { createFolder, getCheckpoint, listStudyData, saveCheckpoint } from '../lib/storage';
+import { createFolder, getCheckpoint, getNoteDraft, listStudyData, saveCheckpoint } from '../lib/storage';
 import { studySession } from '../lib/session';
 import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, parseVideo, type Video } from '../lib/study';
 import panelCss from '../styles/study-panel.css?inline';
@@ -187,9 +187,10 @@ export default defineContentScript({
     }
 
     async function renderScratchpad(view: number, activeFolderId: string, video: Video) {
-      const [data, checkpoint] = await Promise.all([
+      const [data, checkpoint, draft] = await Promise.all([
         listStudyData(),
         getCheckpoint(activeFolderId, video.videoId),
+        getNoteDraft(activeFolderId, video.videoId),
       ]);
       if (view !== generation) return;
 
@@ -202,9 +203,38 @@ export default defineContentScript({
       note.rows = 7;
       note.maxLength = 20_000;
       note.placeholder = 'What do you want to pick up next time?';
-      note.value = checkpoint?.note ?? '';
+      note.value = draft?.note ?? checkpoint?.note ?? '';
       label.htmlFor = note.id;
       const status = makeStatus(checkpoint ? 'Saved at ' + formatTime(checkpoint.seconds) : '');
+      const draftStatus = document.createElement('p');
+      draftStatus.setAttribute('aria-live', 'polite');
+      draftStatus.textContent = draft ? 'All changes saved' : '';
+      const retry = makeButton('Retry saving');
+      retry.className = 'quiet';
+      retry.hidden = true;
+      let edit = 0;
+
+      function autosave() {
+        const revision = ++edit;
+        const watch = document.querySelector('ytd-watch-flexy');
+        const videoHeading = watch?.querySelector('h1 yt-formatted-string, h1');
+        const title = videoHeading?.textContent?.trim() || checkpoint?.title || document.title.replace(/ - YouTube$/, '');
+        draftStatus.textContent = 'Saving...';
+        retry.hidden = true;
+        void studySession({
+          type: 'study:save-draft',
+          draft: { ...video, folderId: activeFolderId, title, note: note.value, updatedAt: Date.now() },
+        }).then(() => {
+          if (revision === edit) draftStatus.textContent = 'All changes saved';
+        }).catch(() => {
+          if (revision === edit) {
+            draftStatus.textContent = 'Could not save changes.';
+            retry.hidden = false;
+          }
+        });
+      }
+      note.addEventListener('input', autosave);
+      retry.addEventListener('click', autosave);
       const save = makeButton('Save checkpoint');
       const end = endButton(view);
       save.addEventListener('click', async () => {
@@ -243,7 +273,7 @@ export default defineContentScript({
           updateTimer();
         }
       });
-      panel.replaceChildren(sessionIndicator(), heading, label, note, makeActions(save, end), status);
+      panel.replaceChildren(sessionIndicator(), heading, label, note, draftStatus, retry, makeActions(save, end), status);
       updateTimer();
     }
 

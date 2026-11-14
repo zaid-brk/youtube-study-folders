@@ -24,7 +24,14 @@ export interface Video {
   playlistId?: string;
 }
 
-export interface Checkpoint extends Video {
+export interface NoteDraft extends Video {
+  folderId: string;
+  title: string;
+  note: string;
+  updatedAt: number;
+}
+
+export interface Checkpoint extends NoteDraft {
   folderId: string;
   title: string;
   seconds: number;
@@ -62,6 +69,7 @@ export function formatTime(seconds: number): string {
 
 export type StudyMessage =
   | { type: 'study:get' }
+  | { type: 'study:save-draft'; draft: NoteDraft }
   | { type: 'study:start'; folderId: string; minutes: number }
   | { type: 'study:stop' }
   | { type: 'study:resume'; checkpoint: Checkpoint; minutes: number };

@@ -184,6 +184,42 @@ test('timer rejects early exits, survives restart, and unlocks without erasing n
   }
 });
 
+test('autosaves drafts by folder and video without moving the resume checkpoint', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-drafts-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Systems');
+    await saveAt(page, 9, 'Original checkpoint note.');
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('New draft without clicking Save checkpoint.');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('New draft without clicking Save checkpoint.');
+    await expect(page.getByRole('status')).toHaveText('Saved at 0:09');
+
+    await page.goto(otherVideo);
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('Draft for another lesson.');
+    await page.goto(video);
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('New draft without clicking Save checkpoint.');
+    await page.goto(otherVideo);
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Draft for another lesson.');
+
+    await finishTimer(context);
+    await page.getByRole('button', { name: 'End session' }).click();
+    await page.goto(video);
+    await startFolder(page, 'Interview practice');
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('');
+    await page.getByRole('textbox', { name: 'Notes and next steps' }).fill('Separate draft for the same video.');
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Separate draft for the same video.');
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
 async function finishTimer(context: BrowserContext) {
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   await worker.evaluate("chrome.storage.local.set({'study-session-ends-at': Date.now() - 1})");
