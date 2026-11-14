@@ -1,4 +1,4 @@
-import { createFolder, listStudyData } from '../../lib/storage';
+import { createFolder, listStudyData, renameFolder } from '../../lib/storage';
 import { exportFolderMarkdown } from '../../lib/notes';
 import { studySession } from '../../lib/session';
 import { formatTime, type Checkpoint } from '../../lib/study';
@@ -62,7 +62,54 @@ async function renderFolders() {
         download.disabled = false;
       }
     });
-    actions.append(download);
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.textContent = 'Rename';
+    rename.addEventListener('click', () => {
+      rename.disabled = true;
+      const editor = document.createElement('form');
+      const label = document.createElement('label');
+      const name = document.createElement('input');
+      name.id = 'rename-' + folder.id;
+      name.type = 'text';
+      name.maxLength = 60;
+      name.required = true;
+      name.value = folder.name;
+      label.htmlFor = name.id;
+      label.textContent = 'Folder name';
+      const row = document.createElement('div');
+      row.className = 'folder-actions';
+      const save = document.createElement('button');
+      save.type = 'submit';
+      save.textContent = 'Save name';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', () => {
+        editor.remove();
+        rename.disabled = false;
+        status.textContent = '';
+      });
+      row.append(save, cancel);
+      editor.append(label, name, row);
+      actions.after(editor);
+      name.select();
+      editor.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        save.disabled = true;
+        cancel.disabled = true;
+        try {
+          await renameFolder(folder.id, name.value);
+          status.textContent = '';
+          await renderFolders();
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'Could not rename the folder.';
+          save.disabled = false;
+          cancel.disabled = false;
+        }
+      });
+    });
+    actions.append(rename, download);
     card.append(heading, actions);
 
     const savedVideos = checkpoints.filter((checkpoint) => checkpoint.folderId === folder.id);

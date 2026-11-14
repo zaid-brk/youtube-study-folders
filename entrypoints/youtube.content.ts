@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import { createFolder, getCheckpoint, getNoteDraft, listStudyData, saveCheckpoint } from '../lib/storage';
 import { noteTimestamps } from '../lib/notes';
 import { studySession } from '../lib/session';
-import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, parseVideo, type Video } from '../lib/study';
+import { ACTIVE_SESSION_KEY, SESSION_END_KEY, formatTime, parseVideo, type Video, type Folder } from '../lib/study';
 import panelCss from '../styles/study-panel.css?inline';
 import '../styles/youtube.css';
 
@@ -196,6 +196,7 @@ export default defineContentScript({
       if (view !== generation) return;
 
       const heading = document.createElement('h2');
+      heading.dataset.folderName = '';
       heading.textContent = data.folders.find((folder) => folder.id === activeFolderId)?.name ?? 'Study session';
       const label = document.createElement('label');
       label.textContent = 'Notes and next steps';
@@ -352,6 +353,11 @@ export default defineContentScript({
     }
 
     const onSessionChanged = (changes: Record<string, unknown>, area: string) => {
+      const renamed = changes['folder:' + folderId] as { newValue?: Folder } | undefined;
+      if (area === 'local' && renamed?.newValue) {
+        const heading = root.querySelector<HTMLElement>('[data-folder-name]');
+        if (heading) heading.textContent = renamed.newValue.name;
+      }
       if (area === 'local' && (ACTIVE_SESSION_KEY in changes || SESSION_END_KEY in changes)) {
         void refreshSession().catch(console.error);
       }

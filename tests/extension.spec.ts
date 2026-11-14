@@ -281,6 +281,44 @@ test('downloads the latest draft as a folder Markdown file', async () => {
   }
 });
 
+test('renames a folder without losing notes or changing its active session', async () => {
+  const profile = await mkdtemp(resolve(tmpdir(), 'study-rename-'));
+  let context: BrowserContext | undefined;
+  try {
+    context = await openBrowser(profile);
+    const page = await context.newPage();
+    await page.goto(video);
+    await startFolder(page, 'Old name');
+    await saveAt(page, 9, 'Keep this note.');
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+    const popup = await context.newPage();
+    await popup.goto(new URL('/popup.html', worker.url()).href);
+    const rename = popup.getByRole('button', { name: 'Rename', exact: true });
+    await expect(rename).toBeVisible();
+    await rename.click();
+    const name = popup.getByRole('textbox', { name: 'Folder name', exact: true });
+    await name.fill('   ');
+    await popup.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(popup.getByRole('status')).toContainText('between 1 and 60');
+    await name.fill('Ignored name');
+    await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(popup.getByRole('heading', { name: 'Old name', exact: true })).toBeVisible();
+    await rename.click();
+    await popup.getByRole('textbox', { name: 'Folder name', exact: true }).fill('CSCE 313 Tutorials');
+    await popup.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(popup.getByRole('heading', { name: 'CSCE 313 Tutorials', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CSCE 313 Tutorials', exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Notes and next steps' })).toHaveValue('Keep this note.');
+    await expect(page.getByRole('status')).toHaveText('Saved at 0:09');
+    await expect(page.getByRole('button', { name: 'End session' })).toBeDisabled();
+    await popup.reload();
+    await expect(popup.getByRole('heading', { name: 'CSCE 313 Tutorials', exact: true })).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
 async function finishTimer(context: BrowserContext) {
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   await worker.evaluate("chrome.storage.local.set({'study-session-ends-at': Date.now() - 1})");

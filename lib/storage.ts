@@ -1,11 +1,14 @@
 import { browser } from 'wxt/browser';
 import { checkpointKey, type Checkpoint, type Folder, type NoteDraft } from './study';
 
-export async function createFolder(rawName: string): Promise<Folder> {
+function folderName(rawName: string) {
   const name = rawName.trim();
   if (!name || name.length > 60) throw new Error('Use a folder name between 1 and 60 characters.');
+  return name;
+}
 
-  const folder = { id: crypto.randomUUID(), name };
+export async function createFolder(rawName: string): Promise<Folder> {
+  const folder = { id: crypto.randomUUID(), name: folderName(rawName) };
   await browser.storage.local.set({ ['folder:' + folder.id]: folder });
   return folder;
 }
@@ -60,4 +63,12 @@ export async function saveNoteDraft(draft: NoteDraft) {
   await browser.storage.local.set({
     ['draft:' + draft.folderId + ':' + draft.videoId]: draft,
   });
+}
+
+export async function renameFolder(folderId: string, rawName: string) {
+  const name = folderName(rawName);
+  const key = 'folder:' + folderId;
+  const folder = (await browser.storage.local.get(key))[key] as Folder | undefined;
+  if (!folder) throw new Error('Could not find this folder.');
+  await browser.storage.local.set({ [key]: { ...folder, name } });
 }
