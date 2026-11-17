@@ -2,6 +2,8 @@
 
 A Chrome extension for studying with YouTube tutorials. Start a study session, pick a folder, then save your notes and playback position together. A green indicator shows that a session is running. Choose a session length in minutes before starting. The green indicator shows the time remaining. End session becomes available when the timer reaches zero. Focus mode applies to all YouTube tabs, including after a browser restart. The homepage, browsing feeds, navigation sidebar, and header distractions are hidden while search remains available. Resume from the extension popup when you are ready to continue.
 
+Available on the [Chrome Web Store](https://chromewebstore.google.com/detail/youtube-study-folders/gmpchhekmgjoiglcncpdhpkipgiljckf).
+
 ## Try it locally
 
 1. Install Node.js 24 and run `npm ci`.
